@@ -33,15 +33,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libnetcdf-dev libnetcdff-dev
 
-      - name: Debug NetCDF installation
-        run: |
-          echo "=== nf-config --fflags ==="
-          nf-config --fflags || echo "nf-config not found"
-          echo "=== Looking for netcdf.mod ==="
-          find /usr -name "netcdf.mod" 2>/dev/null || echo "netcdf.mod not found"
-          echo "=== pkg-config netcdf-fortran ==="
-          pkg-config --cflags netcdf-fortran || echo "pkg-config failed"
-
       - name: Setup Fortran
         uses: fortran-lang/setup-fortran@v1
         with:
