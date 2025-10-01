@@ -14,13 +14,14 @@ auto-executables = true
 auto-tests = false
 auto-examples = false
 module-naming = false
+external-modules = ["netcdf"]
+link = ["netcdff"]
 
 [dependencies]
 # Core S3 library
 fortran-s3-accessor = { git = "https://github.com/pgierz/fortran-s3-accessor.git", tag = "v1.1.0" }
 
-# NetCDF Fortran interface
-netcdf-fortran = { git = "https://github.com/LKedward/netcdf-interfaces.git" }
+# Note: NetCDF Fortran uses system-installed library (linked via [build] section above)
 
 [[executable]]
 name = "s3_netcdf_example"

@@ -106,7 +106,7 @@ contains
         ! Download from S3 to memory
         success = s3_get_uri(uri, content)
         if (.not. success) then
-            status = NF90_ENOTFOUND
+            status = NF90_EINVAL  ! Invalid argument (S3 URI or download failed)
             return
         end if
 
@@ -137,7 +137,7 @@ contains
         open(newunit=unit, file=temp_file, form='unformatted', access='stream', &
              status='replace', action='write', iostat=ios)
         if (ios /= 0) then
-            status = NF90_EACCESS
+            status = NF90_EPERM  ! Permission denied (cannot create temp file)
             return
         end if
 
@@ -145,7 +145,7 @@ contains
         close(unit)
 
         if (ios /= 0) then
-            status = NF90_EWRITE
+            status = NF90_EPERM  ! Permission denied (cannot write temp file)
             return
         end if
 
