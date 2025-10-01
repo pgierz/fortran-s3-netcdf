@@ -20,7 +20,7 @@ module-naming = false
 fortran-s3-accessor = { git = "https://github.com/pgierz/fortran-s3-accessor.git", tag = "v1.1.0" }
 
 # NetCDF Fortran interface
-netcdf-fortran = { git = "https://github.com/LKedward/netcdf-interfaces.git" }
+netcdf-interfaces = { git = "https://github.com/LKedward/netcdf-interfaces.git" }
 
 [[executable]]
 name = "s3_netcdf_example"
