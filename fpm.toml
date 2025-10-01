@@ -25,6 +25,7 @@ fortran-s3-accessor = { git = "https://github.com/pgierz/fortran-s3-accessor.git
 
 [dev-dependencies]
 test-drive = { git = "https://github.com/fortran-lang/test-drive.git" }
+stdlib = { git = "https://github.com/fortran-lang/stdlib.git" }
 
 [[executable]]
 name = "s3_netcdf_example"
