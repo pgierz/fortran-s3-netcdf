@@ -95,10 +95,9 @@ With fortran-s3-accessor v1.1.0:
 ### Error Handling
 
 Returns standard NetCDF error codes:
-- `NF90_ENOTFOUND` - S3 download failed
+- `NF90_EINVAL` - S3 download failed or invalid URI
 - `NF90_EMAXNAME` - Too many open handles (>100)
-- `NF90_EACCESS` - Cannot create temp file
-- `NF90_EWRITE` - Failed to write temp file
+- `NF90_EPERM` - Cannot create or write temp file (permission denied)
 - All other `nf90_*` errors pass through from NetCDF library
 
 ## Critical Usage Rules
