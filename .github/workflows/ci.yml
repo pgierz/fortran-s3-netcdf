@@ -68,13 +68,13 @@ jobs:
             ${{ runner.os }}-fpm-
 
       - name: Build with FPM
-        run: fpm build --verbose
+        run: fpm build --flag "$(nf-config --fflags)" --verbose
 
       - name: Run example with real S3 data (continue on error)
         run: |
           # This downloads real ESGF climate data from public S3 bucket
           # Allow failure since it depends on external service availability
-          fpm run s3_netcdf_example --verbose || echo "Example failed but continuing..."
+          fpm run s3_netcdf_example --flag "$(nf-config --fflags)" --verbose || echo "Example failed but continuing..."
         continue-on-error: true
 
       - name: Check for temp file cleanup
