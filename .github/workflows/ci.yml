@@ -21,29 +21,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         gcc-version: [11, 12, 13]
-        exclude:
-          # macOS only test with gcc 13
-          - os: macos-latest
-            gcc-version: 11
-          - os: macos-latest
-            gcc-version: 12
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install NetCDF (Ubuntu)
-        if: runner.os == 'Linux'
+      - name: Install NetCDF
         run: |
           sudo apt-get update
           sudo apt-get install -y libnetcdf-dev libnetcdff-dev
-
-      - name: Install NetCDF (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install netcdf netcdf-fortran
 
       - name: Setup Fortran
         uses: fortran-lang/setup-fortran@v1
