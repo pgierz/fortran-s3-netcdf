@@ -34,9 +34,9 @@ name = "s3_netcdf_example"
 source-dir = "app"
 main = "s3_netcdf_example.f90"
 
-[[test]]
+[[executable]]
 name = "test_minio_integration"
-source-dir = "test"
+source-dir = "app"
 main = "test_minio_integration.f90"
 
 [install]

@@ -184,10 +184,10 @@ jobs:
           echo "Checking bucket contents with MinIO client..."
           mc ls local/test-bucket/
 
-      - name: Build integration test
+      - name: Build all executables (including integration test)
         run: |
-          echo "Building MinIO integration test..."
-          fpm build test_minio_integration --flag "$(nf-config --fflags)" --verbose
+          echo "Building all executables..."
+          fpm build --flag "$(nf-config --fflags)" --verbose
 
       - name: Run MinIO integration test
         env:
