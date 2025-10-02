@@ -192,14 +192,79 @@ contains
     !> @param config Cache configuration (optional)
     !> @param error Error code: 0=success, non-zero=failure
     subroutine cache_put(uri, local_file, etag, config, error)
+        use iso_fortran_env, only: int64
         character(len=*), intent(in) :: uri
         character(len=*), intent(in) :: local_file
         character(len=*), intent(in), optional :: etag
         type(cache_config), intent(in), optional :: config
         integer, intent(out) :: error
+        character(len=:), allocatable :: cache_root, cache_key, cached_file_path, meta_file_path
+        integer :: exit_status, meta_unit, file_size_bytes
+        integer(int64) :: file_size
+        character(len=32) :: timestamp, size_str
 
-        error = -1
-        ! TODO: Implementation
+        error = 0
+
+        ! Determine cache directory
+        if (present(config)) then
+            if (allocated(config%cache_dir)) then
+                cache_root = config%cache_dir
+            else
+                cache_root = get_cache_dir()
+            end if
+        else
+            cache_root = get_cache_dir()
+        end if
+
+        ! Compute cache key from URI
+        cache_key = compute_cache_key(uri)
+
+        ! Build paths
+        cached_file_path = cache_root // '/files/' // cache_key
+        meta_file_path = cache_root // '/meta/' // cache_key // '.meta'
+
+        ! Copy file to cache (using cp command)
+        call execute_command_line('cp ' // trim(local_file) // ' ' // cached_file_path, &
+                                 exitstat=exit_status)
+        if (exit_status /= 0) then
+            error = 1
+            return
+        end if
+
+        ! Get file size
+        call execute_command_line('stat -f%z ' // cached_file_path // ' > /tmp/fsize.tmp 2>/dev/null || stat -c%s ' // &
+                                 cached_file_path // ' > /tmp/fsize.tmp', exitstat=exit_status)
+        if (exit_status == 0) then
+            open(newunit=meta_unit, file='/tmp/fsize.tmp', status='old', action='read')
+            read(meta_unit, *, iostat=exit_status) file_size_bytes
+            close(meta_unit, status='delete')
+            file_size = int(file_size_bytes, int64)
+        else
+            file_size = 0_int64
+        end if
+
+        ! Get current timestamp (ISO 8601)
+        call execute_command_line('date -u +"%Y-%m-%dT%H:%M:%SZ" > /tmp/ftime.tmp', exitstat=exit_status)
+        if (exit_status == 0) then
+            open(newunit=meta_unit, file='/tmp/ftime.tmp', status='old', action='read')
+            read(meta_unit, '(a)') timestamp
+            close(meta_unit, status='delete')
+        else
+            timestamp = '1970-01-01T00:00:00Z'
+        end if
+
+        ! Write metadata file
+        open(newunit=meta_unit, file=meta_file_path, status='replace', action='write')
+        write(meta_unit, '(a)') 'uri=' // trim(uri)
+        write(size_str, '(i0)') file_size
+        write(meta_unit, '(a)') 'size=' // trim(adjustl(size_str))
+        write(meta_unit, '(a)') 'cached_at=' // trim(adjustl(timestamp))
+        if (present(etag)) then
+            write(meta_unit, '(a)') 'etag=' // trim(etag)
+        end if
+        write(meta_unit, '(a)') 'last_validated=' // trim(adjustl(timestamp))
+        close(meta_unit)
+
     end subroutine cache_put
 
     !> Evict old or large cached files based on policy

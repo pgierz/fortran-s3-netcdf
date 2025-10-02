@@ -22,7 +22,8 @@ contains
             new_unittest("cache_init_respects_env_var", test_cache_init_env_var), &
             new_unittest("get_cache_dir_priority", test_get_cache_dir_priority), &
             new_unittest("cache_init_creates_subdirs", test_cache_init_subdirs), &
-            new_unittest("cache_get_miss_returns_false", test_cache_get_miss) &
+            new_unittest("cache_get_miss_returns_false", test_cache_get_miss), &
+            new_unittest("cache_put_stores_file", test_cache_put_stores_file) &
         ]
 
     end subroutine collect_cache_tests
@@ -204,5 +205,79 @@ contains
         call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
 
     end subroutine test_cache_get_miss
+
+    !> Test that cache_put stores file and metadata
+    subroutine test_cache_put_stores_file(error)
+        type(error_type), allocatable, intent(out) :: error
+        type(cache_config) :: config
+        integer :: init_error, put_error, ios, unit
+        character(len=:), allocatable :: test_cache_dir, temp_file, cache_key
+        character(len=*), parameter :: test_uri = 's3://test-bucket/test-file.nc'
+        character(len=*), parameter :: test_etag = '"5d41402abc4b2a76b9719d911017c592"'
+        character(len=*), parameter :: test_content = 'Test NetCDF content'
+        logical :: file_exists, meta_exists
+
+        ! Use a test-specific cache directory
+        test_cache_dir = '/tmp/fortran-s3-netcdf-test-cache-put'
+
+        ! Clean up any existing test directory
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+        ! Configure and initialize cache
+        config%cache_dir = test_cache_dir
+        call cache_init(config, init_error)
+
+        call check(error, init_error == 0, "cache_init should succeed")
+        if (allocated(error)) return
+
+        ! Create a temporary test file
+        temp_file = '/tmp/fortran-s3-netcdf-test-source.nc'
+        open(newunit=unit, file=temp_file, status='replace', action='write', iostat=ios)
+        write(unit, '(a)') test_content
+        close(unit)
+
+        ! Put the file in cache
+        call cache_put(test_uri, temp_file, test_etag, config, put_error)
+
+        ! Should succeed
+        call check(error, put_error == 0, "cache_put should succeed")
+        if (allocated(error)) return
+
+        ! Compute cache key to check file location
+        cache_key = compute_cache_key(test_uri)
+
+        ! Check that cached file exists
+        inquire(file=trim(test_cache_dir) // '/files/' // cache_key, exist=file_exists)
+        call check(error, file_exists, "Cached file should exist in files/ subdirectory")
+        if (allocated(error)) return
+
+        ! Check that metadata file exists
+        inquire(file=trim(test_cache_dir) // '/meta/' // cache_key // '.meta', exist=meta_exists)
+        call check(error, meta_exists, "Metadata file should exist in meta/ subdirectory")
+        if (allocated(error)) return
+
+        ! Clean up
+        call execute_command_line('rm -f ' // temp_file, exitstat=ios)
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+    end subroutine test_cache_put_stores_file
+
+    !> Helper function to compute cache key (duplicated for testing)
+    !> TODO: Consider making this public in s3_cache module
+    function compute_cache_key(uri) result(cache_key)
+        character(len=*), intent(in) :: uri
+        character(len=16) :: cache_key
+        integer :: i, hash_val
+        character(len=8) :: hex_str
+
+        hash_val = 0
+        do i = 1, len_trim(uri)
+            hash_val = mod(hash_val * 31 + ichar(uri(i:i)), 2147483647)
+        end do
+
+        write(hex_str, '(z8.8)') hash_val
+        cache_key = hex_str // '00000000'
+
+    end function compute_cache_key
 
 end module test_cache
