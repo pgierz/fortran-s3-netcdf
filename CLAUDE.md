@@ -28,6 +28,57 @@ fpm build --profile release
 - **fortran-s3-accessor**: Uses git dependency `{ git = "https://github.com/pgierz/fortran-s3-accessor.git", tag = "v1.1.0" }`
 - **netcdf-fortran**: Uses LKedward's interface wrapper `{ git = "https://github.com/LKedward/netcdf-interfaces.git" }`
 
+## Running Tests
+
+**IMPORTANT**: Always use the provided helper script or slash command to run tests. This ensures correct NetCDF paths are configured.
+
+### Option 1: Helper Script (Recommended for all users)
+
+```bash
+./scripts/run_tests.sh
+```
+
+The script automatically:
+- Detects NetCDF installation via `nf-config`
+- Sets correct include paths (`-I`)
+- Sets correct library paths (`-L`)
+- Works on macOS (Homebrew) and Linux
+
+**Examples:**
+```bash
+./scripts/run_tests.sh                # Run all tests
+./scripts/run_tests.sh --verbose      # Verbose output
+./scripts/run_tests.sh cache          # Run only cache tests
+```
+
+### Option 2: Claude Code Slash Command
+
+If using Claude Code, use the slash command:
+
+```
+/test-fortran
+/test-fortran --verbose
+/test-fortran cache
+```
+
+### Option 3: Manual FPM (Not Recommended)
+
+If you need to run tests manually, use:
+
+```bash
+fpm test --flag "-I$(nf-config --includedir) -L/opt/homebrew/lib"
+```
+
+**Note**: On Linux, replace `/opt/homebrew/lib` with `/usr/lib` or `/usr/lib/x86_64-linux-gnu`
+
+### Test Structure
+
+Tests are organized by functionality:
+- **test_temp_dir**: Temporary directory selection and verification
+- **test_error_codes**: NetCDF error code definitions
+- **test_helpers**: Utility functions (PID, string conversion)
+- **test_cache**: Local caching layer (init, get, put, clear, config)
+
 ## Architecture
 
 ### Core Module: src/s3_netcdf.f90
