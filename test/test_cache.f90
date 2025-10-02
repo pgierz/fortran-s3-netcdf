@@ -24,7 +24,8 @@ contains
             new_unittest("cache_init_creates_subdirs", test_cache_init_subdirs), &
             new_unittest("cache_get_miss_returns_false", test_cache_get_miss), &
             new_unittest("cache_put_stores_file", test_cache_put_stores_file), &
-            new_unittest("cache_get_hit_returns_true", test_cache_get_hit) &
+            new_unittest("cache_get_hit_returns_true", test_cache_get_hit), &
+            new_unittest("cache_clear_removes_all_files", test_cache_clear) &
         ]
 
     end subroutine collect_cache_tests
@@ -324,6 +325,72 @@ contains
         call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
 
     end subroutine test_cache_get_hit
+
+    !> Test that cache_clear removes all cached files
+    subroutine test_cache_clear(error)
+        type(error_type), allocatable, intent(out) :: error
+        type(cache_config) :: config
+        integer :: init_error, put_error, clear_error, ios, unit, i
+        character(len=:), allocatable :: test_cache_dir, temp_file, cache_key
+        character(len=64) :: test_uri
+        logical :: file_exists, meta_exists
+
+        ! Use a test-specific cache directory
+        test_cache_dir = '/tmp/fortran-s3-netcdf-test-cache-clear'
+
+        ! Clean up any existing test directory
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+        ! Configure and initialize cache
+        config%cache_dir = test_cache_dir
+        call cache_init(config, init_error)
+
+        call check(error, init_error == 0, "cache_init should succeed")
+        if (allocated(error)) return
+
+        ! Create and cache multiple files
+        temp_file = '/tmp/fortran-s3-netcdf-test-clear-source.nc'
+        do i = 1, 3
+            ! Create temp file
+            open(newunit=unit, file=temp_file, status='replace', action='write')
+            write(unit, '(a,i0)') 'Test content ', i
+            close(unit)
+
+            ! Cache it
+            write(test_uri, '(a,i0,a)') 's3://test-bucket/file', i, '.nc'
+            call cache_put(trim(test_uri), temp_file, config=config, error=put_error)
+
+            call check(error, put_error == 0, "cache_put should succeed for all files")
+            if (allocated(error)) return
+        end do
+
+        ! Clear the cache
+        call cache_clear(config, clear_error)
+
+        call check(error, clear_error == 0, "cache_clear should succeed")
+        if (allocated(error)) return
+
+        ! Verify all cached files and metadata are gone
+        do i = 1, 3
+            write(test_uri, '(a,i0,a)') 's3://test-bucket/file', i, '.nc'
+            cache_key = compute_cache_key(trim(test_uri))
+
+            inquire(file=trim(test_cache_dir) // '/files/' // cache_key, exist=file_exists)
+            call check(error, .not. file_exists, &
+                       "Cached files should be removed after cache_clear")
+            if (allocated(error)) return
+
+            inquire(file=trim(test_cache_dir) // '/meta/' // cache_key // '.meta', exist=meta_exists)
+            call check(error, .not. meta_exists, &
+                       "Metadata files should be removed after cache_clear")
+            if (allocated(error)) return
+        end do
+
+        ! Clean up
+        call execute_command_line('rm -f ' // temp_file, exitstat=ios)
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+    end subroutine test_cache_clear
 
     !> Helper function to compute cache key (duplicated for testing)
     !> TODO: Consider making this public in s3_cache module

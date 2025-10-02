@@ -293,9 +293,36 @@ contains
     subroutine cache_clear(config, error)
         type(cache_config), intent(in), optional :: config
         integer, intent(out) :: error
+        character(len=:), allocatable :: cache_root
+        integer :: exit_status
 
-        error = -1
-        ! TODO: Implementation
+        error = 0
+
+        ! Determine cache directory
+        if (present(config)) then
+            if (allocated(config%cache_dir)) then
+                cache_root = config%cache_dir
+            else
+                cache_root = get_cache_dir()
+            end if
+        else
+            cache_root = get_cache_dir()
+        end if
+
+        ! Remove all files in files/ subdirectory
+        call execute_command_line('rm -f ' // cache_root // '/files/*', exitstat=exit_status)
+        if (exit_status /= 0) then
+            error = 1
+            return
+        end if
+
+        ! Remove all metadata in meta/ subdirectory
+        call execute_command_line('rm -f ' // cache_root // '/meta/*', exitstat=exit_status)
+        if (exit_status /= 0) then
+            error = 2
+            return
+        end if
+
     end subroutine cache_clear
 
     !> Get cache directory path from environment
