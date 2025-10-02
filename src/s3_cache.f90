@@ -147,9 +147,21 @@ contains
         integer, intent(out) :: error
         character(len=:), allocatable :: cache_root, cache_key
         logical :: file_exists
+        logical :: caching_enabled
 
         error = 0
         is_cached = .false.
+
+        ! Check if caching is enabled
+        caching_enabled = .true.
+        if (present(config)) then
+            caching_enabled = config%enabled
+        end if
+
+        ! If caching disabled, always return cache miss
+        if (.not. caching_enabled) then
+            return
+        end if
 
         ! Determine cache directory
         if (present(config)) then
@@ -202,8 +214,20 @@ contains
         integer :: exit_status, meta_unit, file_size_bytes
         integer(int64) :: file_size
         character(len=32) :: timestamp, size_str
+        logical :: caching_enabled
 
         error = 0
+
+        ! Check if caching is enabled
+        caching_enabled = .true.
+        if (present(config)) then
+            caching_enabled = config%enabled
+        end if
+
+        ! If caching disabled, just return success (no-op)
+        if (.not. caching_enabled) then
+            return
+        end if
 
         ! Determine cache directory
         if (present(config)) then

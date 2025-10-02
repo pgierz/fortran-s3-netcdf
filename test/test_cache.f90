@@ -25,7 +25,8 @@ contains
             new_unittest("cache_get_miss_returns_false", test_cache_get_miss), &
             new_unittest("cache_put_stores_file", test_cache_put_stores_file), &
             new_unittest("cache_get_hit_returns_true", test_cache_get_hit), &
-            new_unittest("cache_clear_removes_all_files", test_cache_clear) &
+            new_unittest("cache_clear_removes_all_files", test_cache_clear), &
+            new_unittest("cache_disabled_always_misses", test_cache_disabled) &
         ]
 
     end subroutine collect_cache_tests
@@ -391,6 +392,58 @@ contains
         call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
 
     end subroutine test_cache_clear
+
+    !> Test that disabled cache always returns cache miss
+    subroutine test_cache_disabled(error)
+        type(error_type), allocatable, intent(out) :: error
+        type(cache_config) :: config
+        integer :: init_error, put_error, get_error, ios, unit
+        logical :: is_cached
+        character(len=:), allocatable :: local_path, test_cache_dir, temp_file
+        character(len=*), parameter :: test_uri = 's3://test-bucket/disabled-test.nc'
+
+        ! Use a test-specific cache directory
+        test_cache_dir = '/tmp/fortran-s3-netcdf-test-cache-disabled'
+
+        ! Clean up any existing test directory
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+        ! Configure cache with enabled=false
+        config%cache_dir = test_cache_dir
+        config%enabled = .false.
+
+        call cache_init(config, init_error)
+
+        call check(error, init_error == 0, "cache_init should succeed even when disabled")
+        if (allocated(error)) return
+
+        ! Create a temporary test file
+        temp_file = '/tmp/fortran-s3-netcdf-test-disabled.nc'
+        open(newunit=unit, file=temp_file, status='replace', action='write')
+        write(unit, '(a)') 'Test content'
+        close(unit)
+
+        ! Try to put file in cache (should be no-op when disabled)
+        call cache_put(test_uri, temp_file, config=config, error=put_error)
+
+        call check(error, put_error == 0, "cache_put should succeed (no-op when disabled)")
+        if (allocated(error)) return
+
+        ! Try to get from cache - should always be a miss
+        call cache_get(test_uri, local_path, is_cached, config, get_error)
+
+        call check(error, get_error == 0, "cache_get should succeed")
+        if (allocated(error)) return
+
+        call check(error, .not. is_cached, &
+                   "cache_get should return miss when caching is disabled")
+        if (allocated(error)) return
+
+        ! Clean up
+        call execute_command_line('rm -f ' // temp_file, exitstat=ios)
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+    end subroutine test_cache_disabled
 
     !> Helper function to compute cache key (duplicated for testing)
     !> TODO: Consider making this public in s3_cache module
