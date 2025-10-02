@@ -47,6 +47,34 @@ module s3_cache
 
 contains
 
+    !> Compute cache key from S3 URI
+    !>
+    !> Uses a simple hash function to generate a deterministic cache key
+    !> from the S3 URI. For now, uses a simple character-based hash.
+    !> TODO: Replace with SHA256 for production use.
+    !>
+    !> @param uri S3 URI
+    !> @return 16-character hex string cache key
+    function compute_cache_key(uri) result(cache_key)
+        character(len=*), intent(in) :: uri
+        character(len=16) :: cache_key
+        integer :: i, hash_val
+        character(len=8) :: hex_str
+
+        ! Simple hash: sum of character codes modulo large prime
+        hash_val = 0
+        do i = 1, len_trim(uri)
+            hash_val = mod(hash_val * 31 + ichar(uri(i:i)), 2147483647)
+        end do
+
+        ! Convert to hex string (8 hex digits from hash)
+        write(hex_str, '(z8.8)') hash_val
+
+        ! Pad to 16 characters for consistency
+        cache_key = hex_str // '00000000'
+
+    end function compute_cache_key
+
     !> Initialize cache directory structure
     !>
     !> Creates the cache root directory and subdirectories (files/, meta/)
@@ -117,10 +145,40 @@ contains
         logical, intent(out) :: is_cached
         type(cache_config), intent(in), optional :: config
         integer, intent(out) :: error
+        character(len=:), allocatable :: cache_root, cache_key
+        logical :: file_exists
 
+        error = 0
         is_cached = .false.
-        error = -1
-        ! TODO: Implementation
+
+        ! Determine cache directory
+        if (present(config)) then
+            if (allocated(config%cache_dir)) then
+                cache_root = config%cache_dir
+            else
+                cache_root = get_cache_dir()
+            end if
+        else
+            cache_root = get_cache_dir()
+        end if
+
+        ! Compute cache key from URI
+        cache_key = compute_cache_key(uri)
+
+        ! Build path to cached file
+        local_path = cache_root // '/files/' // cache_key
+
+        ! Check if cached file exists
+        inquire(file=local_path, exist=file_exists)
+
+        if (file_exists) then
+            is_cached = .true.
+            ! TODO: Add ETag validation if config%validate_etag is true
+            ! TODO: Check TTL against metadata
+        else
+            is_cached = .false.
+        end if
+
     end subroutine cache_get
 
     !> Store downloaded file in cache with metadata

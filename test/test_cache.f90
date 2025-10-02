@@ -21,7 +21,8 @@ contains
             new_unittest("cache_init_creates_directories", test_cache_init_creates_dirs), &
             new_unittest("cache_init_respects_env_var", test_cache_init_env_var), &
             new_unittest("get_cache_dir_priority", test_get_cache_dir_priority), &
-            new_unittest("cache_init_creates_subdirs", test_cache_init_subdirs) &
+            new_unittest("cache_init_creates_subdirs", test_cache_init_subdirs), &
+            new_unittest("cache_get_miss_returns_false", test_cache_get_miss) &
         ]
 
     end subroutine collect_cache_tests
@@ -163,5 +164,45 @@ contains
         call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
 
     end subroutine test_cache_init_subdirs
+
+    !> Test that cache_get returns false for cache miss
+    subroutine test_cache_get_miss(error)
+        type(error_type), allocatable, intent(out) :: error
+        type(cache_config) :: config
+        integer :: init_error, get_error, ios
+        logical :: is_cached
+        character(len=:), allocatable :: local_path, test_cache_dir
+        character(len=*), parameter :: test_uri = 's3://test-bucket/nonexistent-file.nc'
+
+        ! Use a test-specific cache directory
+        test_cache_dir = '/tmp/fortran-s3-netcdf-test-cache-get-miss'
+
+        ! Clean up any existing test directory
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+        ! Configure and initialize cache
+        config%cache_dir = test_cache_dir
+        call cache_init(config, init_error)
+
+        call check(error, init_error == 0, "cache_init should succeed")
+        if (allocated(error)) return
+
+        ! Try to get a non-existent URI from cache
+        call cache_get(test_uri, local_path, is_cached, config, get_error)
+
+        ! Should succeed (no error)
+        call check(error, get_error == 0, &
+                   "cache_get should succeed even for cache miss")
+        if (allocated(error)) return
+
+        ! Should indicate cache miss
+        call check(error, .not. is_cached, &
+                   "cache_get should return is_cached=false for non-existent URI")
+        if (allocated(error)) return
+
+        ! Clean up
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+    end subroutine test_cache_get_miss
 
 end module test_cache
