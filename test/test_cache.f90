@@ -23,7 +23,8 @@ contains
             new_unittest("get_cache_dir_priority", test_get_cache_dir_priority), &
             new_unittest("cache_init_creates_subdirs", test_cache_init_subdirs), &
             new_unittest("cache_get_miss_returns_false", test_cache_get_miss), &
-            new_unittest("cache_put_stores_file", test_cache_put_stores_file) &
+            new_unittest("cache_put_stores_file", test_cache_put_stores_file), &
+            new_unittest("cache_get_hit_returns_true", test_cache_get_hit) &
         ]
 
     end subroutine collect_cache_tests
@@ -261,6 +262,68 @@ contains
         call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
 
     end subroutine test_cache_put_stores_file
+
+    !> Test that cache_get returns true for cache hit
+    subroutine test_cache_get_hit(error)
+        type(error_type), allocatable, intent(out) :: error
+        type(cache_config) :: config
+        integer :: init_error, put_error, get_error, ios, unit
+        logical :: is_cached
+        character(len=:), allocatable :: local_path, test_cache_dir, temp_file
+        character(len=*), parameter :: test_uri = 's3://test-bucket/cached-file.nc'
+        character(len=*), parameter :: test_content = 'Cached NetCDF data'
+
+        ! Use a test-specific cache directory
+        test_cache_dir = '/tmp/fortran-s3-netcdf-test-cache-hit'
+
+        ! Clean up any existing test directory
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+        ! Configure and initialize cache
+        config%cache_dir = test_cache_dir
+        call cache_init(config, init_error)
+
+        call check(error, init_error == 0, "cache_init should succeed")
+        if (allocated(error)) return
+
+        ! Create a temporary test file
+        temp_file = '/tmp/fortran-s3-netcdf-test-source-hit.nc'
+        open(newunit=unit, file=temp_file, status='replace', action='write', iostat=ios)
+        write(unit, '(a)') test_content
+        close(unit)
+
+        ! Put the file in cache
+        call cache_put(test_uri, temp_file, config=config, error=put_error)
+
+        call check(error, put_error == 0, "cache_put should succeed")
+        if (allocated(error)) return
+
+        ! Now try to get it from cache - should be a hit
+        call cache_get(test_uri, local_path, is_cached, config, get_error)
+
+        ! Should succeed
+        call check(error, get_error == 0, "cache_get should succeed")
+        if (allocated(error)) return
+
+        ! Should indicate cache hit
+        call check(error, is_cached, &
+                   "cache_get should return is_cached=true for cached URI")
+        if (allocated(error)) return
+
+        ! Should return a valid path
+        call check(error, allocated(local_path), &
+                   "cache_get should return allocated local_path")
+        if (allocated(error)) return
+
+        call check(error, len(local_path) > 0, &
+                   "cache_get should return non-empty local_path")
+        if (allocated(error)) return
+
+        ! Clean up
+        call execute_command_line('rm -f ' // temp_file, exitstat=ios)
+        call execute_command_line('rm -rf ' // test_cache_dir, exitstat=ios)
+
+    end subroutine test_cache_get_hit
 
     !> Helper function to compute cache key (duplicated for testing)
     !> TODO: Consider making this public in s3_cache module
