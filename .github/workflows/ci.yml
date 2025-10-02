@@ -184,15 +184,20 @@ jobs:
           echo "Checking bucket contents with MinIO client..."
           mc ls local/test-bucket/
 
-      - name: Run MinIO integration tests
+      - name: Build integration test
+        run: |
+          echo "Building MinIO integration test..."
+          fpm build test_minio_integration --flag "$(nf-config --fflags)" --verbose
+
+      - name: Run MinIO integration test
         env:
           S3_ENDPOINT: http://localhost:9000
           S3_ACCESS_KEY: minioadmin
           S3_SECRET_KEY: minioadmin123
           S3_BUCKET: test-bucket
         run: |
-          echo "Running integration tests with MinIO..."
-          fpm test --flag "$(nf-config --fflags)" --verbose
+          echo "Running MinIO integration test..."
+          fpm run test_minio_integration --flag "$(nf-config --fflags)"
 
       - name: MinIO logs (if failure)
         if: failure()
