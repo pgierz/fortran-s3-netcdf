@@ -39,5 +39,10 @@ name = "test_minio_integration"
 source-dir = "app"
 main = "test_minio_integration.f90"
 
+[[executable]]
+name = "benchmark"
+source-dir = "app"
+main = "benchmark.f90"
+
 [install]
 library = true
