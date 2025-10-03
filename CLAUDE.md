@@ -28,6 +28,57 @@ fpm build --profile release
 - **fortran-s3-accessor**: Uses git dependency `{ git = "https://github.com/pgierz/fortran-s3-accessor.git", tag = "v1.1.0" }`
 - **netcdf-fortran**: Uses LKedward's interface wrapper `{ git = "https://github.com/LKedward/netcdf-interfaces.git" }`
 
+## Running Tests
+
+**IMPORTANT**: Always use the provided helper script or slash command to run tests. This ensures correct NetCDF paths are configured.
+
+### Option 1: Helper Script (Recommended for all users)
+
+```bash
+./scripts/run_tests.sh
+```
+
+The script automatically:
+- Detects NetCDF installation via `nf-config`
+- Sets correct include paths (`-I`)
+- Sets correct library paths (`-L`)
+- Works on macOS (Homebrew) and Linux
+
+**Examples:**
+```bash
+./scripts/run_tests.sh                # Run all tests
+./scripts/run_tests.sh --verbose      # Verbose output
+./scripts/run_tests.sh cache          # Run only cache tests
+```
+
+### Option 2: Claude Code Slash Command
+
+If using Claude Code, use the slash command:
+
+```
+/test-fortran
+/test-fortran --verbose
+/test-fortran cache
+```
+
+### Option 3: Manual FPM (Not Recommended)
+
+If you need to run tests manually, use:
+
+```bash
+fpm test --flag "-I$(nf-config --includedir) -L/opt/homebrew/lib"
+```
+
+**Note**: On Linux, replace `/opt/homebrew/lib` with `/usr/lib` or `/usr/lib/x86_64-linux-gnu`
+
+### Test Structure
+
+Tests are organized by functionality:
+- **test_temp_dir**: Temporary directory selection and verification
+- **test_error_codes**: NetCDF error code definitions
+- **test_helpers**: Utility functions (PID, string conversion)
+- **test_cache**: Local caching layer (init, get, put, clear, config)
+
 ## Architecture
 
 ### Core Module: src/s3_netcdf.f90
@@ -95,10 +146,9 @@ With fortran-s3-accessor v1.1.0:
 ### Error Handling
 
 Returns standard NetCDF error codes:
-- `NF90_ENOTFOUND` - S3 download failed
+- `NF90_EINVAL` - S3 download failed or invalid URI
 - `NF90_EMAXNAME` - Too many open handles (>100)
-- `NF90_EACCESS` - Cannot create temp file
-- `NF90_EWRITE` - Failed to write temp file
+- `NF90_EPERM` - Cannot create or write temp file (permission denied)
 - All other `nf90_*` errors pass through from NetCDF library
 
 ## Critical Usage Rules
@@ -143,3 +193,132 @@ status = s3_nf90_close(ncid)  ! Cleanup happens here
 - AWS Signature v4 for private buckets
 - Progress callbacks for large downloads
 - Better error diagnostics
+
+## Git Workflow
+
+This project uses milestone-based development branches with release candidate testing before production releases.
+
+### Branch Structure
+- **`master`**: Production releases only. Protected branch. Only contains tagged final releases.
+- **`develop/v0.1.0`**, **`develop/v0.2.0`**, **`develop/v1.0.0`**: Milestone development branches
+- **`rc/v0.1.0`**, **`rc/v0.2.0`**: Release candidate branches for final testing
+- **`feature/<name>`**: Feature branches for individual issues
+- **`hotfix/<name>`**: Emergency fixes for production issues
+
+### Workflow for New Features
+
+1. **Identify target milestone** from issue labels
+2. **Create feature branch** from appropriate milestone branch:
+   ```bash
+   git checkout develop/v0.1.0
+   git pull
+   git checkout -b feature/my-feature
+   ```
+3. **Develop with TDD approach**:
+   - Write test (or update CI)
+   - Run locally if possible
+   - Commit changes
+   - Push and create PR targeting milestone branch
+   - CI runs automatically - review results
+   - Iterate until green
+4. **Create PR** targeting the milestone develop branch (NOT master)
+5. **CI validates** - must pass before merge
+6. **Review and merge** to milestone branch
+7. **Delete feature branch** after merge
+
+### Release Candidate Process
+
+When all issues in a milestone are complete and ready for release:
+
+1. **Create RC branch** from develop branch:
+   ```bash
+   git checkout develop/v0.1.0
+   git checkout -b rc/v0.1.0
+   git push -u origin rc/v0.1.0
+   ```
+
+2. **Tag first release candidate**:
+   ```bash
+   git tag -a v0.1.0-rc.1 -m "Release candidate 1 for v0.1.0"
+   git push origin v0.1.0-rc.1
+   ```
+
+3. **Create GitHub pre-release**:
+   - Mark as pre-release
+   - Announce for testing
+   - Document known issues/testing needed
+
+4. **If issues found during RC testing**:
+   - Create fix branches from `rc/v0.1.0`
+   - PR fixes back to `rc/v0.1.0`
+   - Tag new RC: `v0.1.0-rc.2`, `v0.1.0-rc.3`, etc.
+   - Also backport critical fixes to `develop/v0.1.0` if needed
+
+5. **When RC is stable** (no critical issues found):
+   - Proceed to final release
+
+### Final Release Process
+
+1. **Ensure RC branch CI is green** and no known critical issues
+2. **Create PR**: `rc/v0.1.0` → `master`
+3. **Final review and approval**
+4. **Merge to master**
+5. **Tag final release**:
+   ```bash
+   git checkout master
+   git pull
+   git tag -a v0.1.0 -m "Release v0.1.0"
+   git push origin v0.1.0
+   ```
+6. **Create GitHub release** (not pre-release):
+   - Comprehensive changelog
+   - Link to milestone
+   - Migration notes if applicable
+7. **Merge master back to develop branch** to capture any RC fixes:
+   ```bash
+   git checkout develop/v0.1.0
+   git merge master
+   git push
+   ```
+8. **Close milestone** in GitHub
+
+### Example Release Timeline
+
+```
+develop/v0.1.0 (ongoing work)
+    ↓
+rc/v0.1.0 created
+    ↓
+v0.1.0-rc.1 tagged ← testing phase
+    ↓
+[bug found] → fix → v0.1.0-rc.2 tagged
+    ↓
+[bug found] → fix → v0.1.0-rc.3 tagged
+    ↓
+[stable, tested] → PR to master → v0.1.0 tagged
+    ↓
+master ← final release
+    ↓
+merge back to develop/v0.1.0 (capture any RC fixes)
+```
+
+### Branch Protection Rules
+- **master**: Requires PR, requires CI pass, requires review, no direct pushes
+- **develop/***: Requires PR, requires CI pass, no direct pushes
+- **rc/***: Requires PR for fixes, requires CI pass
+
+### Tagging Conventions
+- **Development**: No tags on develop branches
+- **Release Candidates**: `v0.1.0-rc.1`, `v0.1.0-rc.2`, etc. (semantic versioning with RC suffix)
+- **Final Releases**: `v0.1.0`, `v0.2.0`, `v1.0.0` (semantic versioning)
+- **Hotfixes**: `v0.1.1`, `v0.1.2` (patch version bump)
+
+### Important Notes
+- ALWAYS target milestone develop branch in PRs, never master directly
+- CI must pass before merging
+- Use TDD: let CI validate your changes
+- Release candidates are MANDATORY before any production release
+- Minimum 1 RC per release, but create more as needed
+- Only promote RC to production when thoroughly tested
+- Feature branches should be short-lived (< 1 week)
+- RC testing should include real-world usage scenarios

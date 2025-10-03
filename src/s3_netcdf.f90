@@ -45,13 +45,17 @@
 module s3_netcdf
     use iso_fortran_env, only: int32
     use s3_http
+    use s3_cache
     use netcdf
+    use stdlib_strings, only: to_string
     implicit none
     private
 
     public :: s3_nf90_open
     public :: s3_nf90_close
     public :: get_optimal_temp_dir
+    public :: set_cache_config
+    public :: get_cache_config
 
     !> Maximum number of concurrent NetCDF file handles
     integer, parameter :: MAX_HANDLES = 100
@@ -66,7 +70,26 @@ module s3_netcdf
     !> Global handle registry
     type(netcdf_handle), dimension(MAX_HANDLES) :: handle_registry
 
+    !> Global cache configuration
+    type(cache_config) :: global_cache_config
+
 contains
+
+    !> Set cache configuration for s3_nf90_open
+    !>
+    !> @param config Cache configuration to use
+    subroutine set_cache_config(config)
+        type(cache_config), intent(in) :: config
+        global_cache_config = config
+    end subroutine set_cache_config
+
+    !> Get current cache configuration
+    !>
+    !> @return Current cache configuration
+    function get_cache_config() result(config)
+        type(cache_config) :: config
+        config = global_cache_config
+    end function get_cache_config
 
     !> Open a NetCDF file from S3 URI with transparent streaming.
     !>
@@ -98,16 +121,29 @@ contains
         integer, intent(out) :: ncid
         integer :: status
 
-        character(len=:), allocatable :: content, temp_dir, temp_file
-        logical :: success
-        integer :: unit, ios, handle_idx, pid
+        character(len=:), allocatable :: content, temp_dir, temp_file, cached_file
+        logical :: success, is_cached, from_cache
+        integer :: unit, ios, handle_idx, pid, cache_error
         character(len=32) :: pid_str
 
-        ! Download from S3 to memory
-        success = s3_get_uri(uri, content)
-        if (.not. success) then
-            status = NF90_ENOTFOUND
-            return
+        ! Initialize cache if not already done
+        call cache_init(global_cache_config, cache_error)
+
+        ! Try to get from cache first
+        call cache_get(uri, cached_file, is_cached, global_cache_config, cache_error)
+
+        if (is_cached .and. cache_error == 0) then
+            ! Cache hit! Use cached file directly
+            temp_file = cached_file
+            from_cache = .true.
+        else
+            ! Cache miss - download from S3 to memory
+            success = s3_get_uri(uri, content)
+            if (.not. success) then
+                status = NF90_EINVAL  ! Invalid argument (S3 URI or download failed)
+                return
+            end if
+            from_cache = .false.
         end if
 
         ! Find available handle slot
@@ -124,37 +160,46 @@ contains
             return
         end if
 
-        ! Get optimal temp directory
-        temp_dir = get_optimal_temp_dir()
+        ! If not from cache, need to write temp file
+        if (.not. from_cache) then
+            ! Get optimal temp directory
+            temp_dir = get_optimal_temp_dir()
 
-        ! Create unique temp file name using PID
-        call get_pid(pid)
-        write(pid_str, '(I0)') pid
-        temp_file = trim(temp_dir) // '/s3_netcdf_' // trim(pid_str) // '_' // &
-                    trim(int_to_str(handle_idx)) // '.nc'
+            ! Create unique temp file name using PID
+            call get_pid(pid)
+            write(pid_str, '(I0)') pid
+            temp_file = trim(temp_dir) // '/s3_netcdf_' // trim(pid_str) // '_' // &
+                        trim(to_string(handle_idx)) // '.nc'
 
-        ! Write content to temp file
-        open(newunit=unit, file=temp_file, form='unformatted', access='stream', &
-             status='replace', action='write', iostat=ios)
-        if (ios /= 0) then
-            status = NF90_EACCESS
-            return
+            ! Write content to temp file
+            open(newunit=unit, file=temp_file, form='unformatted', access='stream', &
+                 status='replace', action='write', iostat=ios)
+            if (ios /= 0) then
+                status = NF90_EPERM  ! Permission denied (cannot create temp file)
+                return
+            end if
+
+            write(unit, iostat=ios) content
+            close(unit)
+
+            if (ios /= 0) then
+                status = NF90_EPERM  ! Permission denied (cannot write temp file)
+                return
+            end if
+
+            ! Store in cache for future use
+            call cache_put(uri, temp_file, config=global_cache_config, error=cache_error)
+            ! Ignore cache_put errors - continue even if caching fails
         end if
 
-        write(unit, iostat=ios) content
-        close(unit)
-
-        if (ios /= 0) then
-            status = NF90_EWRITE
-            return
-        end if
-
-        ! Open with NetCDF
+        ! Open with NetCDF (either from cache or newly created temp file)
         status = nf90_open(temp_file, mode, ncid)
         if (status /= NF90_NOERR) then
-            ! Clean up temp file on failure
-            open(newunit=unit, file=temp_file, status='old', iostat=ios)
-            if (ios == 0) close(unit, status='delete')
+            ! Clean up temp file on failure (only if not from cache)
+            if (.not. from_cache) then
+                open(newunit=unit, file=temp_file, status='old', iostat=ios)
+                if (ios == 0) close(unit, status='delete')
+            end if
             return
         end if
 
@@ -273,19 +318,5 @@ contains
         close(unit, status='delete')
 
     end subroutine get_pid
-
-    !> Convert integer to string.
-    !>
-    !> @param[in] i Integer to convert
-    !> @return String representation
-    function int_to_str(i) result(str)
-        integer, intent(in) :: i
-        character(len=:), allocatable :: str
-        character(len=32) :: buffer
-
-        write(buffer, '(I0)') i
-        str = trim(buffer)
-
-    end function int_to_str
 
 end module s3_netcdf
