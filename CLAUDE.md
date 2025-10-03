@@ -113,6 +113,28 @@ Tests are organized by functionality:
 - **test_helpers**: Utility functions (PID, string conversion)
 - **test_cache**: Local caching layer (init, get, put, clear, config)
 
+## Performance Benchmarking
+
+A comprehensive benchmarking suite is available to measure and track performance:
+
+```bash
+# Run benchmarks (requires MinIO setup with test fixtures)
+fpm run benchmark --flag "-I$(nf-config --includedir) -L/opt/homebrew/lib"
+```
+
+**Benchmarks measured:**
+- Small file access (~30KB) - cold cache and warm cache
+- Medium file access (~50KB) - cold cache and warm cache
+- Multiple file handles (20 concurrent) - stress test
+- Cache hit speedup comparison
+
+**Outputs markdown table format:**
+- Time to open (milliseconds)
+- Cache speedup (warm vs cold)
+- Multi-handle performance
+
+The benchmark suite runs automatically in CI on pull requests and tracks performance regressions over time.
+
 ## Architecture
 
 ### Core Module: src/s3_netcdf.f90
