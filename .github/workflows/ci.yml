@@ -179,10 +179,13 @@ jobs:
           echo "Uploading fixtures to MinIO..."
           python test/scripts/upload_minio.py
 
-      - name: Verify uploads with mc
+      - name: Verify uploads and enable anonymous access
         run: |
           echo "Checking bucket contents with MinIO client..."
           mc ls local/test-bucket/
+
+          echo "Enabling anonymous download access for testing..."
+          mc anonymous set download local/test-bucket
 
       - name: Build all executables (including integration test)
         run: |
